@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "TESmart KVM",
+        "description": "Configure your TESmart KVM switch.",
+        "data": {
+          "model": "Model",
+          "host": "Host",
+          "port": "Port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the KVM switch. Check the host and port.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "entity": {
+    "select": {
+      "active_input": {
+        "name": "Active Input"
+      },
+      "display_timeout": {
+        "name": "Display Timeout"
+      }
+    },
+    "switch": {
+      "buzzer": {
+        "name": "Buzzer"
+      },
+      "input_detection": {
+        "name": "Input Detection"
+      }
+    }
+  }
+}
