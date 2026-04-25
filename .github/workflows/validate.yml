@@ -1,42 +1,17 @@
-name: Validate
-
+name: HACS Validation
 on:
   push:
-    branches:
-      - main
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
   validate:
-    name: Validate
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@v6
+      - name: HACS validation
+        uses: hacs/action@main
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: uv sync --extra dev
-
-      - name: Run ruff
-        run: uv run ruff check custom_components/ tests/
-
-      - name: Check formatting
-        run: uv run ruff format --check custom_components/ tests/
-
-      - name: Run tests
-        run: uv run python -m pytest tests/ -v
+          category: integration
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
