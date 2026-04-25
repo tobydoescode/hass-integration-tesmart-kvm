@@ -47,12 +47,20 @@ class TesmartKvmCoordinator(DataUpdateCoordinator[CoordinatorData]):
             config_entry=entry,
         )
 
+    def _validate_input_port(self, port: int) -> None:
+        """Validate an input port against the configured model."""
+        if not 1 <= port <= self.model_info.port_count:
+            raise UpdateFailed(
+                f"Invalid input port {port}; expected 1-{self.model_info.port_count}"
+            )
+
     async def _async_update_data(self) -> CoordinatorData:
         """Fetch the current active input from the device."""
         try:
             if not self.client.connected:
                 await self.client.connect()
             active_input = await self.client.get_active_input()
+            self._validate_input_port(active_input)
         except TesmartError as err:
             raise UpdateFailed(f"Error communicating with TESmart KVM: {err}") from err
 
@@ -60,6 +68,7 @@ class TesmartKvmCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
     async def async_set_active_input(self, port: int) -> None:
         """Switch to the specified input port."""
+        self._validate_input_port(port)
         try:
             await self.client.set_active_input(port)
         except TesmartError as err:

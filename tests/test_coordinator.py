@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.tesmart_kvm.client import TesmartConnectionError
@@ -70,6 +71,36 @@ async def test_poll_raises_update_failed(hass: HomeAssistant, mock_entry: MockCo
     assert coordinator.last_update_success is False
 
 
+async def test_poll_rejects_active_input_above_model_port_count(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Test polling rejects active input values above the model port count."""
+    client = AsyncMock()
+    client.connected = True
+    client.get_active_input = AsyncMock(return_value=9)
+
+    coordinator = TesmartKvmCoordinator(hass, mock_entry, client)
+    await coordinator.async_refresh()
+
+    assert coordinator.last_update_success is False
+    assert coordinator.data is None
+
+
+async def test_poll_rejects_active_input_below_one(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Test polling rejects active input values below one."""
+    client = AsyncMock()
+    client.connected = True
+    client.get_active_input = AsyncMock(return_value=0)
+
+    coordinator = TesmartKvmCoordinator(hass, mock_entry, client)
+    await coordinator.async_refresh()
+
+    assert coordinator.last_update_success is False
+    assert coordinator.data is None
+
+
 async def test_set_active_input(hass: HomeAssistant, mock_entry: MockConfigEntry) -> None:
     """Test switching active input calls the client."""
     client = AsyncMock()
@@ -82,6 +113,42 @@ async def test_set_active_input(hass: HomeAssistant, mock_entry: MockConfigEntry
     await coordinator.async_set_active_input(5)
 
     client.set_active_input.assert_called_once_with(5)
+
+
+async def test_set_active_input_rejects_zero(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Test setting input zero fails before calling the client."""
+    client = AsyncMock()
+    client.connected = True
+    client.get_active_input = AsyncMock(return_value=1)
+    client.set_active_input = AsyncMock()
+
+    coordinator = TesmartKvmCoordinator(hass, mock_entry, client)
+    await coordinator.async_refresh()
+
+    with pytest.raises(UpdateFailed, match="Invalid input port"):
+        await coordinator.async_set_active_input(0)
+
+    client.set_active_input.assert_not_called()
+
+
+async def test_set_active_input_rejects_above_model_port_count(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Test setting an input above the model port count fails before client call."""
+    client = AsyncMock()
+    client.connected = True
+    client.get_active_input = AsyncMock(return_value=1)
+    client.set_active_input = AsyncMock()
+
+    coordinator = TesmartKvmCoordinator(hass, mock_entry, client)
+    await coordinator.async_refresh()
+
+    with pytest.raises(UpdateFailed, match="Invalid input port"):
+        await coordinator.async_set_active_input(9)
+
+    client.set_active_input.assert_not_called()
 
 
 async def test_set_buzzer(hass: HomeAssistant, mock_entry: MockConfigEntry) -> None:
