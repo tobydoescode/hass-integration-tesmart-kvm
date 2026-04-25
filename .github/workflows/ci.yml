@@ -1,4 +1,4 @@
-name: Validate
+name: CI
 
 on:
   push:
@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Validate
+  test:
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
