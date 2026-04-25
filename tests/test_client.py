@@ -12,6 +12,7 @@ from custom_components.tesmart_kvm.client import (
     PACKET_HEADER,
     TesmartClient,
     TesmartConnectionError,
+    TesmartProtocolError,
 )
 from custom_components.tesmart_kvm.const import (
     CMD_BUZZER,
@@ -97,6 +98,7 @@ class TestCommands:
         assert result == 3  # 0-indexed response + 1
         expected_packet = PACKET_HEADER + bytes([CMD_QUERY_INPUT, 0x00]) + PACKET_FOOTER
         writer.write.assert_called_with(expected_packet)
+        reader.readexactly.assert_awaited_once_with(6)
 
     async def test_set_active_input(self, client: TesmartClient) -> None:
         """Test switching input sends correct packet."""
@@ -109,6 +111,7 @@ class TestCommands:
 
         expected_packet = PACKET_HEADER + bytes([CMD_SWITCH_INPUT, 0x05]) + PACKET_FOOTER
         writer.write.assert_called_with(expected_packet)
+        reader.readexactly.assert_awaited_once_with(6)
 
     async def test_set_buzzer_on(self, client: TesmartClient) -> None:
         """Test enabling buzzer sends correct packet."""
@@ -121,6 +124,7 @@ class TestCommands:
 
         expected_packet = PACKET_HEADER + bytes([CMD_BUZZER, 0x01]) + PACKET_FOOTER
         writer.write.assert_called_with(expected_packet)
+        reader.readexactly.assert_awaited_once_with(6)
 
     async def test_set_buzzer_off(self, client: TesmartClient) -> None:
         """Test disabling buzzer sends correct packet."""
@@ -133,6 +137,7 @@ class TestCommands:
 
         expected_packet = PACKET_HEADER + bytes([CMD_BUZZER, 0x00]) + PACKET_FOOTER
         writer.write.assert_called_with(expected_packet)
+        reader.readexactly.assert_awaited_once_with(6)
 
     async def test_set_display_timeout(self, client: TesmartClient) -> None:
         """Test setting display timeout sends correct packet."""
@@ -145,6 +150,7 @@ class TestCommands:
 
         expected_packet = PACKET_HEADER + bytes([CMD_DISPLAY_TIMEOUT, 0x1E]) + PACKET_FOOTER
         writer.write.assert_called_with(expected_packet)
+        reader.readexactly.assert_awaited_once_with(6)
 
     async def test_set_input_detection(self, client: TesmartClient) -> None:
         """Test enabling input detection sends correct packet."""
@@ -157,6 +163,7 @@ class TestCommands:
 
         expected_packet = PACKET_HEADER + bytes([CMD_INPUT_DETECTION, 0x01]) + PACKET_FOOTER
         writer.write.assert_called_with(expected_packet)
+        reader.readexactly.assert_awaited_once_with(6)
 
 
 class TestErrorHandling:
@@ -202,6 +209,50 @@ class TestErrorHandling:
             with pytest.raises(TesmartConnectionError, match="Communication error"):
                 await client.get_active_input()
 
+    async def test_invalid_response_header_disconnects(self, client: TesmartClient) -> None:
+        """Test invalid response header disconnects and raises protocol error."""
+        response = bytes([0x00, 0xBB, 0x03, CMD_QUERY_INPUT, 0x01, 0xEE])
+        reader, writer = make_mock_streams(response)
+
+        with patch("asyncio.open_connection", return_value=(reader, writer)):
+            await client.connect()
+            with pytest.raises(TesmartProtocolError, match="Invalid response header"):
+                await client.get_active_input()
+            assert not client.connected
+
+    async def test_invalid_response_footer_disconnects(self, client: TesmartClient) -> None:
+        """Test invalid response footer disconnects and raises protocol error."""
+        response = bytes([0xAA, 0xBB, 0x03, CMD_QUERY_INPUT, 0x01, 0x00])
+        reader, writer = make_mock_streams(response)
+
+        with patch("asyncio.open_connection", return_value=(reader, writer)):
+            await client.connect()
+            with pytest.raises(TesmartProtocolError, match="Invalid response footer"):
+                await client.get_active_input()
+            assert not client.connected
+
+    async def test_unexpected_response_command_disconnects(self, client: TesmartClient) -> None:
+        """Test unexpected response command disconnects and raises protocol error."""
+        response = make_response(CMD_SWITCH_INPUT, 0x01)
+        reader, writer = make_mock_streams(response)
+
+        with patch("asyncio.open_connection", return_value=(reader, writer)):
+            await client.connect()
+            with pytest.raises(TesmartProtocolError, match="Unexpected response command"):
+                await client.get_active_input()
+            assert not client.connected
+
+    async def test_out_of_range_active_input_disconnects(self, client: TesmartClient) -> None:
+        """Test invalid active input response value raises protocol error."""
+        response = make_response(CMD_QUERY_INPUT, 0xFF)
+        reader, writer = make_mock_streams(response)
+
+        with patch("asyncio.open_connection", return_value=(reader, writer)):
+            await client.connect()
+            with pytest.raises(TesmartProtocolError, match="Invalid active input value"):
+                await client.get_active_input()
+            assert not client.connected
+
 
 class TestConnectionTest:
     """Tests for the test_connection method."""
@@ -220,3 +271,17 @@ class TestConnectionTest:
         with patch("asyncio.open_connection", side_effect=OSError("Connection refused")):
             result = await client.test_connection()
             assert result is False
+
+    async def test_failed_connection_test_disconnects_after_query_error(
+        self, client: TesmartClient
+    ) -> None:
+        """Test test_connection closes a connected socket after query failure."""
+        response = bytes([0x00, 0xBB, 0x03, CMD_QUERY_INPUT, 0x01, 0xEE])
+        reader, writer = make_mock_streams(response)
+
+        with patch("asyncio.open_connection", return_value=(reader, writer)):
+            result = await client.test_connection()
+
+        assert result is False
+        writer.close.assert_called_once()
+        assert not client.connected

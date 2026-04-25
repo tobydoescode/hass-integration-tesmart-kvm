@@ -20,6 +20,7 @@ PACKET_HEADER = bytes([0xAA, 0xBB, 0x03])
 PACKET_FOOTER = bytes([0xEE])
 PACKET_LENGTH = 6
 TIMEOUT = 5.0
+MAX_INPUT_RESPONSE_VALUE = 0x0F
 
 
 class TesmartError(Exception):
@@ -28,6 +29,10 @@ class TesmartError(Exception):
 
 class TesmartConnectionError(TesmartError):
     """Error connecting to or communicating with the device."""
+
+
+class TesmartProtocolError(TesmartError):
+    """Invalid or unexpected response from the device."""
 
 
 class TesmartClient:
@@ -65,8 +70,19 @@ class TesmartClient:
             self._writer = None
             self._reader = None
 
-    async def _send_command(self, cmd: int, value: int, *, expect_response: bool = True) -> bytes:
-        """Send a command and optionally read the 6-byte response."""
+    def _validate_response(self, cmd: int, response: bytes) -> None:
+        """Validate the common 6-byte response packet shape."""
+        if not response.startswith(PACKET_HEADER):
+            raise TesmartProtocolError(f"Invalid response header: {response.hex()}")
+        if not response.endswith(PACKET_FOOTER):
+            raise TesmartProtocolError(f"Invalid response footer: {response.hex()}")
+        if response[3] != cmd:
+            raise TesmartProtocolError(
+                f"Unexpected response command: got 0x{response[3]:02x}, expected 0x{cmd:02x}"
+            )
+
+    async def _send_command(self, cmd: int, value: int) -> bytes:
+        """Send a command and read the 6-byte response."""
         packet = PACKET_HEADER + bytes([cmd, value]) + PACKET_FOOTER
 
         async with self._lock:
@@ -80,18 +96,19 @@ class TesmartClient:
                 self._writer.write(packet)
                 await self._writer.drain()
 
-                if not expect_response:
-                    return b""
-
                 response = await asyncio.wait_for(
                     self._reader.readexactly(PACKET_LENGTH),
                     timeout=TIMEOUT,
                 )
+                self._validate_response(cmd, response)
             except asyncio.IncompleteReadError as err:
                 await self.disconnect()
                 raise TesmartConnectionError(
                     f"Incomplete response: got {len(err.partial)} bytes"
                 ) from err
+            except TesmartProtocolError:
+                await self.disconnect()
+                raise
             except (OSError, TimeoutError) as err:
                 await self.disconnect()
                 raise TesmartConnectionError(f"Communication error: {err}") from err
@@ -101,7 +118,11 @@ class TesmartClient:
     async def get_active_input(self) -> int:
         """Query the currently active input port (1-based)."""
         response = await self._send_command(CMD_QUERY_INPUT, 0x00)
-        return response[4] + 1  # Response is 0-indexed, we return 1-indexed
+        value = response[4]
+        if value > MAX_INPUT_RESPONSE_VALUE:
+            await self.disconnect()
+            raise TesmartProtocolError(f"Invalid active input value: 0x{value:02x}")
+        return value + 1  # Response is 0-indexed, we return 1-indexed
 
     async def set_active_input(self, port: int) -> None:
         """Switch to the specified input port (1-based)."""
@@ -109,23 +130,24 @@ class TesmartClient:
 
     async def set_buzzer(self, enabled: bool) -> None:
         """Enable or disable the buzzer."""
-        await self._send_command(CMD_BUZZER, 0x01 if enabled else 0x00, expect_response=False)
+        await self._send_command(CMD_BUZZER, 0x01 if enabled else 0x00)
 
     async def set_display_timeout(self, value: int) -> None:
         """Set the display timeout (0x00=always on, 0x0A=10s, 0x1E=30s)."""
-        await self._send_command(CMD_DISPLAY_TIMEOUT, value, expect_response=False)
+        await self._send_command(CMD_DISPLAY_TIMEOUT, value)
 
     async def set_input_detection(self, enabled: bool) -> None:
         """Enable or disable auto input detection."""
         value = 0x01 if enabled else 0x00
-        await self._send_command(CMD_INPUT_DETECTION, value, expect_response=False)
+        await self._send_command(CMD_INPUT_DETECTION, value)
 
     async def test_connection(self) -> bool:
         """Test connectivity by connecting and querying current input."""
         try:
             await self.connect()
             await self.get_active_input()
-            await self.disconnect()
         except TesmartError:
+            await self.disconnect()
             return False
+        await self.disconnect()
         return True
