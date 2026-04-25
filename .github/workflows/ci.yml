@@ -40,6 +40,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
+          set -euo pipefail
           uv run python -m pytest tests/ -v \
             --cov=custom_components.tesmart_kvm \
             --cov-report=term-missing \
@@ -54,7 +55,11 @@ jobs:
             echo "## Test Coverage"
             echo ""
             echo '```'
-            sed -n '/Name .* Stmts .* Miss .* Cover/,/TOTAL/p' coverage.txt
+            if [ -f coverage.txt ]; then
+              sed -n '/Name .* Stmts .* Miss .* Cover/,/TOTAL/p' coverage.txt
+            else
+              echo "coverage.txt was not generated."
+            fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
