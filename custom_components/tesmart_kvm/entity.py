@@ -22,7 +22,9 @@ class TesmartKvmEntity(CoordinatorEntity[TesmartKvmCoordinator]):
     def device_info(self) -> DeviceInfo:
         """Return device info."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.entry.entry_id)},
+            identifiers={
+                (DOMAIN, self.coordinator.entry.unique_id or self.coordinator.entry.entry_id)
+            },
             name=f"TESmart {self.coordinator.model_info.name}",
             manufacturer="TESmart",
             model=self.coordinator.model_info.name,

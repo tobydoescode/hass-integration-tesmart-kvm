@@ -35,7 +35,7 @@ def test_device_info(coordinator: TesmartKvmCoordinator) -> None:
     """Test base entity device info."""
     entity = TesmartKvmEntity(coordinator)
 
-    assert entity.device_info["identifiers"] == {(DOMAIN, coordinator.entry.entry_id)}
+    assert entity.device_info["identifiers"] == {(DOMAIN, coordinator.entry.unique_id)}
     assert entity.device_info["name"] == "TESmart HKS801-EB23"
     assert entity.device_info["manufacturer"] == "TESmart"
     assert entity.device_info["model"] == "HKS801-EB23"
