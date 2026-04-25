@@ -27,5 +27,6 @@ TODO.md
 # Home Assistant config
 config/
 
+.coverage
 docs/superpowers/
 .worktrees/
