@@ -21,6 +21,8 @@ PACKET_FOOTER = bytes([0xEE])
 PACKET_LENGTH = 6
 TIMEOUT = 5.0
 MAX_INPUT_RESPONSE_VALUE = 0x0F
+MIN_TCP_PORT = 1
+MAX_TCP_PORT = 65535
 
 
 class TesmartError(Exception):
@@ -53,6 +55,9 @@ class TesmartClient:
 
     async def connect(self) -> None:
         """Open a TCP connection to the device."""
+        if not MIN_TCP_PORT <= self._port <= MAX_TCP_PORT:
+            raise TesmartConnectionError(f"Invalid TCP port: {self._port}")
+
         try:
             self._reader, self._writer = await asyncio.wait_for(
                 asyncio.open_connection(self._host, self._port),

@@ -28,7 +28,9 @@ STEP_USER_SCHEMA = vol.Schema(
             SelectSelectorConfig(options=MODEL_OPTIONS, mode=SelectSelectorMode.DROPDOWN)
         ),
         vol.Required(CONF_HOST): str,
-        vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
+        vol.Required(CONF_PORT, default=DEFAULT_PORT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=65535)
+        ),
     }
 )
 

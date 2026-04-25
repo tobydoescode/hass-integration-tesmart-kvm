@@ -285,3 +285,19 @@ class TestConnectionTest:
         assert result is False
         writer.close.assert_called_once()
         assert not client.connected
+
+    async def test_connection_test_returns_false_for_negative_port(self) -> None:
+        """Test connection test handles invalid negative port as a failed connection."""
+        client = TesmartClient("192.168.1.10", -1)
+
+        result = await client.test_connection()
+
+        assert result is False
+
+    async def test_connection_test_returns_false_for_too_large_port(self) -> None:
+        """Test connection test handles invalid large port as a failed connection."""
+        client = TesmartClient("192.168.1.10", 65536)
+
+        result = await client.test_connection()
+
+        assert result is False
