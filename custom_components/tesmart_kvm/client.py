@@ -19,6 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 PACKET_HEADER = bytes([0xAA, 0xBB, 0x03])
 PACKET_FOOTER = bytes([0xEE])
 PACKET_LENGTH = 6
+CMD_INPUT_FEEDBACK = 0x11
 TIMEOUT = 5.0
 MAX_INPUT_RESPONSE_VALUE = 0x0F
 MIN_TCP_PORT = 1
@@ -75,15 +76,14 @@ class TesmartClient:
             self._writer = None
             self._reader = None
 
-    def _validate_response(self, cmd: int, response: bytes) -> None:
-        """Validate the common 6-byte response packet shape."""
+    def _validate_response(self, response: bytes) -> None:
+        """Validate the common 6-byte current-input feedback packet shape."""
         if not response.startswith(PACKET_HEADER):
             raise TesmartProtocolError(f"Invalid response header: {response.hex()}")
-        if not response.endswith(PACKET_FOOTER):
-            raise TesmartProtocolError(f"Invalid response footer: {response.hex()}")
-        if response[3] != cmd:
+        if response[3] != CMD_INPUT_FEEDBACK:
             raise TesmartProtocolError(
-                f"Unexpected response command: got 0x{response[3]:02x}, expected 0x{cmd:02x}"
+                "Unexpected response command: "
+                f"got 0x{response[3]:02x}, expected 0x{CMD_INPUT_FEEDBACK:02x}"
             )
 
     async def _send_command(self, cmd: int, value: int) -> bytes:
@@ -105,7 +105,7 @@ class TesmartClient:
                     self._reader.readexactly(PACKET_LENGTH),
                     timeout=TIMEOUT,
                 )
-                self._validate_response(cmd, response)
+                self._validate_response(response)
             except asyncio.IncompleteReadError as err:
                 await self.disconnect()
                 raise TesmartConnectionError(

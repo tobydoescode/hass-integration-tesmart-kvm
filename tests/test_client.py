@@ -28,6 +28,11 @@ def make_response(cmd: int, value: int) -> bytes:
     return PACKET_HEADER + bytes([cmd, value]) + PACKET_FOOTER
 
 
+def make_input_feedback(value: int, trailer: int = 0xEE) -> bytes:
+    """Build a mock current-input feedback packet."""
+    return PACKET_HEADER + bytes([0x11, value, trailer])
+
+
 def make_mock_streams(response: bytes) -> tuple[AsyncMock, MagicMock]:
     """Create mock reader/writer for asyncio.open_connection."""
     reader = AsyncMock()
@@ -88,7 +93,7 @@ class TestCommands:
 
     async def test_get_active_input(self, client: TesmartClient) -> None:
         """Test querying active input sends correct packet and parses response."""
-        response = make_response(CMD_QUERY_INPUT, 0x02)  # 0-indexed: 0x02 = input 3
+        response = make_input_feedback(0x02)  # 0-indexed: 0x02 = input 3
         reader, writer = make_mock_streams(response)
 
         with patch("asyncio.open_connection", return_value=(reader, writer)):
@@ -100,9 +105,22 @@ class TestCommands:
         writer.write.assert_called_with(expected_packet)
         reader.readexactly.assert_awaited_once_with(6)
 
+    async def test_get_active_input_accepts_lan_checksum_trailer(
+        self, client: TesmartClient
+    ) -> None:
+        """Test querying active input accepts LAN feedback with checksum trailer."""
+        response = make_input_feedback(0x02, trailer=0x18)
+        reader, writer = make_mock_streams(response)
+
+        with patch("asyncio.open_connection", return_value=(reader, writer)):
+            await client.connect()
+            result = await client.get_active_input()
+
+        assert result == 3
+
     async def test_set_active_input(self, client: TesmartClient) -> None:
         """Test switching input sends correct packet."""
-        response = make_response(CMD_SWITCH_INPUT, 0x05)
+        response = make_input_feedback(0x02)
         reader, writer = make_mock_streams(response)
 
         with patch("asyncio.open_connection", return_value=(reader, writer)):
@@ -115,7 +133,7 @@ class TestCommands:
 
     async def test_set_buzzer_on(self, client: TesmartClient) -> None:
         """Test enabling buzzer sends correct packet."""
-        response = make_response(CMD_BUZZER, 0x01)
+        response = make_input_feedback(0x02)
         reader, writer = make_mock_streams(response)
 
         with patch("asyncio.open_connection", return_value=(reader, writer)):
@@ -128,7 +146,7 @@ class TestCommands:
 
     async def test_set_buzzer_off(self, client: TesmartClient) -> None:
         """Test disabling buzzer sends correct packet."""
-        response = make_response(CMD_BUZZER, 0x00)
+        response = make_input_feedback(0x02)
         reader, writer = make_mock_streams(response)
 
         with patch("asyncio.open_connection", return_value=(reader, writer)):
@@ -141,7 +159,7 @@ class TestCommands:
 
     async def test_set_display_timeout(self, client: TesmartClient) -> None:
         """Test setting display timeout sends correct packet."""
-        response = make_response(CMD_DISPLAY_TIMEOUT, 0x1E)
+        response = make_input_feedback(0x02)
         reader, writer = make_mock_streams(response)
 
         with patch("asyncio.open_connection", return_value=(reader, writer)):
@@ -154,7 +172,7 @@ class TestCommands:
 
     async def test_set_input_detection(self, client: TesmartClient) -> None:
         """Test enabling input detection sends correct packet."""
-        response = make_response(CMD_INPUT_DETECTION, 0x01)
+        response = make_input_feedback(0x02)
         reader, writer = make_mock_streams(response)
 
         with patch("asyncio.open_connection", return_value=(reader, writer)):
@@ -220,14 +238,14 @@ class TestErrorHandling:
                 await client.get_active_input()
             assert not client.connected
 
-    async def test_invalid_response_footer_disconnects(self, client: TesmartClient) -> None:
-        """Test invalid response footer disconnects and raises protocol error."""
+    async def test_legacy_echo_response_disconnects(self, client: TesmartClient) -> None:
+        """Test a command echo response disconnects and raises protocol error."""
         response = bytes([0xAA, 0xBB, 0x03, CMD_QUERY_INPUT, 0x01, 0x00])
         reader, writer = make_mock_streams(response)
 
         with patch("asyncio.open_connection", return_value=(reader, writer)):
             await client.connect()
-            with pytest.raises(TesmartProtocolError, match="Invalid response footer"):
+            with pytest.raises(TesmartProtocolError, match="Unexpected response command"):
                 await client.get_active_input()
             assert not client.connected
 
@@ -244,7 +262,7 @@ class TestErrorHandling:
 
     async def test_out_of_range_active_input_disconnects(self, client: TesmartClient) -> None:
         """Test invalid active input response value raises protocol error."""
-        response = make_response(CMD_QUERY_INPUT, 0xFF)
+        response = make_input_feedback(0xFF)
         reader, writer = make_mock_streams(response)
 
         with patch("asyncio.open_connection", return_value=(reader, writer)):
@@ -259,12 +277,24 @@ class TestConnectionTest:
 
     async def test_successful_connection_test(self, client: TesmartClient) -> None:
         """Test test_connection returns True on success."""
-        response = make_response(CMD_QUERY_INPUT, 0x01)
+        response = make_input_feedback(0x01)
         reader, writer = make_mock_streams(response)
 
         with patch("asyncio.open_connection", return_value=(reader, writer)):
             result = await client.test_connection()
             assert result is True
+
+    async def test_connection_test_accepts_lan_checksum_trailer(
+        self, client: TesmartClient
+    ) -> None:
+        """Test test_connection succeeds with LAN checksum trailer."""
+        response = make_input_feedback(0x02, trailer=0x18)
+        reader, writer = make_mock_streams(response)
+
+        with patch("asyncio.open_connection", return_value=(reader, writer)):
+            result = await client.test_connection()
+
+        assert result is True
 
     async def test_failed_connection_test(self, client: TesmartClient) -> None:
         """Test test_connection returns False on failure."""
