@@ -36,5 +36,11 @@
         "name": "Input Detection"
       }
     }
+  },
+  "issues": {
+    "device_unreachable": {
+      "title": "{name} is unreachable",
+      "description": "The TESmart KVM device \"{name}\" has failed to respond {failures} consecutive times. Check that the device is powered on and reachable on the network."
+    }
   }
 }

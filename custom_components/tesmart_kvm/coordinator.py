@@ -8,12 +8,15 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .client import TesmartClient, TesmartError
 from .const import CONF_MODEL, DEFAULT_SCAN_INTERVAL, DOMAIN, MODELS
 
 _LOGGER = logging.getLogger(__name__)
+
+CONSECUTIVE_FAILURE_THRESHOLD = 3
 
 type CoordinatorData = dict[str, Any]
 
@@ -39,6 +42,8 @@ class TesmartKvmCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self.display_timeout: int | None = None
         self.input_detection_enabled: bool | None = None
 
+        self._consecutive_failures: int = 0
+
         super().__init__(
             hass,
             _LOGGER,
@@ -54,6 +59,30 @@ class TesmartKvmCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 f"Invalid input port {port}; expected 1-{self.model_info.port_count}"
             )
 
+    def _maybe_create_repair(self) -> None:
+        """Create a repair issue after repeated connection failures."""
+        if self._consecutive_failures >= CONSECUTIVE_FAILURE_THRESHOLD:
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                f"device_unreachable_{self.entry.entry_id}",
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key="device_unreachable",
+                translation_placeholders={
+                    "name": self.entry.title,
+                    "failures": str(self._consecutive_failures),
+                },
+            )
+
+    def _clear_repair(self) -> None:
+        """Remove the repair issue when the device recovers."""
+        ir.async_delete_issue(
+            self.hass,
+            DOMAIN,
+            f"device_unreachable_{self.entry.entry_id}",
+        )
+
     async def _async_update_data(self) -> CoordinatorData:
         """Fetch the current active input from the device."""
         try:
@@ -62,8 +91,12 @@ class TesmartKvmCoordinator(DataUpdateCoordinator[CoordinatorData]):
             active_input = await self.client.get_active_input()
             self._validate_input_port(active_input)
         except TesmartError as err:
+            self._consecutive_failures += 1
+            self._maybe_create_repair()
             raise UpdateFailed(f"Error communicating with TESmart KVM: {err}") from err
 
+        self._consecutive_failures = 0
+        self._clear_repair()
         return {"active_input": active_input}
 
     async def async_set_active_input(self, port: int) -> None:
