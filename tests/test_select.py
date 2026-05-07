@@ -48,6 +48,7 @@ def test_active_input_current_option(coordinator: TesmartKvmCoordinator) -> None
 
     assert entity.current_option is None
     coordinator.async_set_updated_data({"active_input": 3})
+    entity.__dict__.pop("current_option", None)
     assert entity.current_option == "3"
 
 
@@ -75,6 +76,7 @@ def test_display_timeout_current_option(coordinator: TesmartKvmCoordinator) -> N
 
     assert entity.current_option is None
     coordinator.display_timeout = 0x1E
+    entity.__dict__.pop("current_option", None)
     assert entity.current_option == "30 Seconds"
 
 

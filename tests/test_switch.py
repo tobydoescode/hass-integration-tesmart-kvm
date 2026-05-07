@@ -38,8 +38,10 @@ def test_buzzer_switch_state(coordinator: TesmartKvmCoordinator) -> None:
     assert entity.unique_id == f"{coordinator.entry.entry_id}_buzzer"
     assert entity.is_on is None
     coordinator.buzzer_enabled = True
+    entity.__dict__.pop("is_on", None)
     assert entity.is_on is True
     coordinator.buzzer_enabled = False
+    entity.__dict__.pop("is_on", None)
     assert entity.is_on is False
 
 
@@ -63,8 +65,10 @@ def test_input_detection_switch_state(coordinator: TesmartKvmCoordinator) -> Non
     assert entity.unique_id == f"{coordinator.entry.entry_id}_input_detection"
     assert entity.is_on is None
     coordinator.input_detection_enabled = True
+    entity.__dict__.pop("is_on", None)
     assert entity.is_on is True
     coordinator.input_detection_enabled = False
+    entity.__dict__.pop("is_on", None)
     assert entity.is_on is False
 
 

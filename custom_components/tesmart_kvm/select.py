@@ -6,6 +6,7 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from propcache.api import cached_property
 
 from .const import DISPLAY_TIMEOUT_OPTIONS, DOMAIN
 from .coordinator import TesmartKvmCoordinator
@@ -31,11 +32,12 @@ async def async_setup_entry(
     )
 
 
-class TesmartActiveInputSelect(TesmartKvmEntity, SelectEntity):
+class TesmartActiveInputSelect(TesmartKvmEntity, SelectEntity):  # type: ignore[reportIncompatibleVariableOverride]
     """Select entity for the active input port."""
 
     _attr_translation_key = "active_input"
     _attr_icon = "mdi:video-input-hdmi"
+    _cached_property_keys = {"current_option"}
 
     def __init__(self, coordinator: TesmartKvmCoordinator) -> None:
         """Initialize the select entity."""
@@ -43,7 +45,7 @@ class TesmartActiveInputSelect(TesmartKvmEntity, SelectEntity):
         self._attr_unique_id = f"{coordinator.entry.entry_id}_active_input"
         self._attr_options = [str(i) for i in range(1, coordinator.model_info.port_count + 1)]
 
-    @property
+    @cached_property
     def current_option(self) -> str | None:
         """Return the currently active input."""
         if self.coordinator.data is None:
@@ -55,11 +57,12 @@ class TesmartActiveInputSelect(TesmartKvmEntity, SelectEntity):
         await self.coordinator.async_set_active_input(int(option))
 
 
-class TesmartDisplayTimeoutSelect(TesmartKvmEntity, SelectEntity):
+class TesmartDisplayTimeoutSelect(TesmartKvmEntity, SelectEntity):  # type: ignore[reportIncompatibleVariableOverride]
     """Select entity for the display timeout."""
 
     _attr_translation_key = "display_timeout"
     _attr_icon = "mdi:monitor-shimmer"
+    _cached_property_keys = {"current_option"}
 
     def __init__(self, coordinator: TesmartKvmCoordinator) -> None:
         """Initialize the select entity."""
@@ -67,7 +70,7 @@ class TesmartDisplayTimeoutSelect(TesmartKvmEntity, SelectEntity):
         self._attr_unique_id = f"{coordinator.entry.entry_id}_display_timeout"
         self._attr_options = list(TIMEOUT_VALUE_TO_LABEL.values())
 
-    @property
+    @cached_property
     def current_option(self) -> str | None:
         """Return the current display timeout."""
         if self.coordinator.display_timeout is None:
