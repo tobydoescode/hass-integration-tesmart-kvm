@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -39,3 +39,28 @@ def test_device_info(coordinator: TesmartKvmCoordinator) -> None:
     assert entity.device_info["name"] == "TESmart HKS801-EB23"
     assert entity.device_info["manufacturer"] == "TESmart"
     assert entity.device_info["model"] == "HKS801-EB23"
+
+
+def test_handle_coordinator_update_invalidates_cached_properties(
+    coordinator: TesmartKvmCoordinator,
+) -> None:
+    """Test _handle_coordinator_update removes cached property values."""
+
+    class TestEntity(TesmartKvmEntity):
+        _cached_property_keys = {"some_cached_prop"}
+
+    entity = TestEntity(coordinator)
+
+    # Simulate a cached property being stored in the instance dict
+    entity.__dict__["some_cached_prop"] = "stale_value"
+    assert "some_cached_prop" in entity.__dict__
+
+    # Patch the parent's _handle_coordinator_update to avoid needing a full HA setup
+    with patch.object(
+        TesmartKvmEntity.__mro__[2],  # CoordinatorEntity
+        "_handle_coordinator_update",
+    ):
+        entity._handle_coordinator_update()
+
+    # The cached key should be evicted
+    assert "some_cached_prop" not in entity.__dict__

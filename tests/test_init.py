@@ -9,7 +9,12 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.tesmart_kvm import PLATFORMS, async_setup_entry, async_unload_entry
+from custom_components.tesmart_kvm import (
+    PLATFORMS,
+    async_migrate_entry,
+    async_setup_entry,
+    async_unload_entry,
+)
 from custom_components.tesmart_kvm.const import CONF_MODEL, DOMAIN
 
 
@@ -98,3 +103,12 @@ async def test_async_unload_entry_disconnects_client(hass: HomeAssistant) -> Non
     mock_unload.assert_awaited_once_with(entry, PLATFORMS)
     coordinator.client.disconnect.assert_awaited_once()
     assert entry.entry_id not in hass.data[DOMAIN]
+
+
+async def test_async_migrate_entry(hass: HomeAssistant) -> None:
+    """Test migration handler returns True (no-op migration)."""
+    entry = make_entry(hass)
+
+    result = await async_migrate_entry(hass, entry)
+
+    assert result is True

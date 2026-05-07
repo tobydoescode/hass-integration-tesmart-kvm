@@ -6,12 +6,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.tesmart_kvm.client import TesmartConnectionError
 from custom_components.tesmart_kvm.const import CONF_MODEL, DOMAIN
-from custom_components.tesmart_kvm.coordinator import TesmartKvmCoordinator
+from custom_components.tesmart_kvm.coordinator import (
+    CONSECUTIVE_FAILURE_THRESHOLD,
+    TesmartKvmCoordinator,
+)
 
 
 @pytest.fixture
@@ -197,3 +201,111 @@ async def test_set_input_detection(hass: HomeAssistant, mock_entry: MockConfigEn
     assert coordinator.input_detection_enabled is None
     await coordinator.async_set_input_detection(True)
     assert coordinator.input_detection_enabled is True
+
+
+async def test_repair_created_after_consecutive_failures(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Test a repair issue is created after reaching the failure threshold."""
+    client = AsyncMock()
+    client.connected = True
+    client.get_active_input = AsyncMock(side_effect=TesmartConnectionError("timeout"))
+
+    coordinator = TesmartKvmCoordinator(hass, mock_entry, client)
+
+    # Trigger enough failures to hit the threshold
+    for _ in range(CONSECUTIVE_FAILURE_THRESHOLD):
+        await coordinator.async_refresh()
+
+    issue_id = f"device_unreachable_{mock_entry.entry_id}"
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+    assert issue is not None
+    assert issue.severity == ir.IssueSeverity.ERROR
+    assert issue.translation_key == "device_unreachable"
+
+
+async def test_repair_cleared_on_recovery(hass: HomeAssistant, mock_entry: MockConfigEntry) -> None:
+    """Test the repair issue is cleared when the device recovers."""
+    client = AsyncMock()
+    client.connected = True
+    client.get_active_input = AsyncMock(side_effect=TesmartConnectionError("timeout"))
+
+    coordinator = TesmartKvmCoordinator(hass, mock_entry, client)
+
+    # Build up failures to create the repair
+    for _ in range(CONSECUTIVE_FAILURE_THRESHOLD):
+        await coordinator.async_refresh()
+
+    issue_id = f"device_unreachable_{mock_entry.entry_id}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
+
+    # Now recover
+    client.get_active_input = AsyncMock(return_value=1)
+    await coordinator.async_refresh()
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+    assert coordinator.data == {"active_input": 1}
+
+
+async def test_set_active_input_raises_on_client_error(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Test set_active_input raises UpdateFailed on client error."""
+    client = AsyncMock()
+    client.connected = True
+    client.get_active_input = AsyncMock(return_value=1)
+    client.set_active_input = AsyncMock(side_effect=TesmartConnectionError("fail"))
+
+    coordinator = TesmartKvmCoordinator(hass, mock_entry, client)
+    await coordinator.async_refresh()
+
+    with pytest.raises(UpdateFailed, match="Error switching input"):
+        await coordinator.async_set_active_input(3)
+
+
+async def test_set_buzzer_raises_on_client_error(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Test set_buzzer raises UpdateFailed on client error."""
+    client = AsyncMock()
+    client.connected = True
+    client.get_active_input = AsyncMock(return_value=1)
+    client.set_buzzer = AsyncMock(side_effect=TesmartConnectionError("fail"))
+
+    coordinator = TesmartKvmCoordinator(hass, mock_entry, client)
+    await coordinator.async_refresh()
+
+    with pytest.raises(UpdateFailed, match="Error setting buzzer"):
+        await coordinator.async_set_buzzer(True)
+
+
+async def test_set_display_timeout_raises_on_client_error(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Test set_display_timeout raises UpdateFailed on client error."""
+    client = AsyncMock()
+    client.connected = True
+    client.get_active_input = AsyncMock(return_value=1)
+    client.set_display_timeout = AsyncMock(side_effect=TesmartConnectionError("fail"))
+
+    coordinator = TesmartKvmCoordinator(hass, mock_entry, client)
+    await coordinator.async_refresh()
+
+    with pytest.raises(UpdateFailed, match="Error setting display timeout"):
+        await coordinator.async_set_display_timeout(0x1E)
+
+
+async def test_set_input_detection_raises_on_client_error(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+) -> None:
+    """Test set_input_detection raises UpdateFailed on client error."""
+    client = AsyncMock()
+    client.connected = True
+    client.get_active_input = AsyncMock(return_value=1)
+    client.set_input_detection = AsyncMock(side_effect=TesmartConnectionError("fail"))
+
+    coordinator = TesmartKvmCoordinator(hass, mock_entry, client)
+    await coordinator.async_refresh()
+
+    with pytest.raises(UpdateFailed, match="Error setting input detection"):
+        await coordinator.async_set_input_detection(True)
