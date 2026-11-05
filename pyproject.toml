@@ -2,7 +2,7 @@
 name = "ha-tesmart-kvm-integration"
 version = "0.1.0"
 description = "Home Assistant custom integration for TESmart KVM switches"
-requires-python = ">=3.14"
+requires-python = ">=3.15"
 dependencies = []
 
 [project.optional-dependencies]
